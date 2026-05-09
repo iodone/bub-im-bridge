@@ -31,7 +31,7 @@ async def fetch_message_content(client: lark.Client, message_id: str) -> str | N
     try:
         from lark_oapi.api.im.v1 import GetMessageRequest
 
-        req = GetMessageRequest.builder().message_id(message_id).build()
+        req = GetMessageRequest.builder().message_id(message_id).card_msg_content_type("raw").build()
         resp = api.get(req)
 
         if not resp.success():
