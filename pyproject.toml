@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "bub>=0.3.5",
     "weixin-agent-sdk @ git+https://github.com/iodone/weixin-agent-sdk",
-    "lark-oapi>=1.6.2",
+    "lark-oapi>=1.3.0,<1.6",
 ]
 
 [project.entry-points."bub"]
