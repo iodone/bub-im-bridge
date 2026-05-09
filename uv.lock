@@ -245,7 +245,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "bub", specifier = ">=0.3.5" },
-    { name = "lark-oapi", specifier = ">=1.3.0,<1.6" },
+    { name = "lark-oapi", specifier = ">=1.6.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
     { name = "weixin-agent-sdk", git = "https://github.com/iodone/weixin-agent-sdk" },
@@ -701,7 +701,7 @@ wheels = [
 
 [[package]]
 name = "lark-oapi"
-version = "1.5.5"
+version = "1.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -710,8 +710,9 @@ dependencies = [
     { name = "requests-toolbelt" },
     { name = "websockets" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/d1/48/cc1ffab88050ba015b7248038d35974a012a904ab240a85189d136c16552/lark_oapi-1.6.2.tar.gz", hash = "sha256:d98b89cb476be433d654e92252bb33bfbaeccfe87fda14ddec4b384096162d6f", size = 2075681, upload-time = "2026-05-08T07:48:55.783Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b4/72/c2e973066da57e9f6720c229364e673d89c884fac65c265a08e2c32eed3c/lark_oapi-1.5.5-py3-none-any.whl", hash = "sha256:c953d3f87e5b43d9e99cdee7c2d962568ac05d5c01ef57ad662fbb5d4ec0e69f", size = 6995394, upload-time = "2026-04-21T04:00:42.216Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/fe/022c018e9321ec60134bed015b3e34eaf85d06485fe422b71f5a82597934/lark_oapi-1.6.2-py3-none-any.whl", hash = "sha256:65d1ddac1ecaa728d1ffbc9c6fdffb896d76654cf8c7a2922ca4bc4114e74f7a", size = 7143659, upload-time = "2026-05-08T07:48:52.001Z" },
 ]
 
 [[package]]
