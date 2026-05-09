@@ -332,57 +332,7 @@ def _normalize_text(message_type: str, content: str) -> str:
         return str(parsed.get("text", "")).strip() if parsed else content.strip()
     if parsed is None:
         return f"[{message_type} message]"
-    # For interactive (card) messages, extract readable text instead of raw JSON
-    if message_type in ("interactive", "card"):
-        card_text = _extract_card_text(parsed)
-        if card_text:
-            return card_text
     return f"[{message_type} message] {json.dumps(parsed, ensure_ascii=False)}"
-
-
-def _extract_card_text(parsed: dict[str, Any]) -> str:
-    """Extract human-readable text from an interactive card JSON.
-
-    Handles both schema 2.0 (``body.elements``) and legacy (``elements``)
-    card formats.  Returns a best-effort plain-text representation of the
-    card content so it can be included in the agent context.
-    """
-    parts: list[str] = []
-
-    # Header
-    header = parsed.get("header") or {}
-    title = header.get("title") or {}
-    if title.get("content"):
-        parts.append(str(title["content"]))
-
-    # Body elements — schema 2.0 uses body.elements, legacy uses top-level elements
-    body = parsed.get("body") or {}
-    elements = body.get("elements") or parsed.get("elements") or []
-
-    for el in elements:
-        if isinstance(el, dict):
-            tag = el.get("tag")
-            if tag == "markdown":
-                parts.append(str(el.get("content", "")))
-            elif tag == "text":
-                t = el.get("text", "")
-                if t:
-                    parts.append(str(t))
-            elif tag == "plain_text":
-                t = el.get("content", "")
-                if t:
-                    parts.append(str(t))
-        elif isinstance(el, list):
-            # Nested list of elements (legacy format)
-            for sub in el:
-                if isinstance(sub, dict):
-                    tag = sub.get("tag")
-                    if tag in ("text", "markdown"):
-                        t = sub.get("text") or sub.get("content") or ""
-                        if t:
-                            parts.append(str(t))
-
-    return "\n".join(parts).strip() if parts else ""
 
 
 def parse_time_range(time_str: str | None) -> float | None:

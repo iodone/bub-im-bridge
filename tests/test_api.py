@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
-from bub_im_bridge.feishu.api import fetch_user_info
+from bub_im_bridge.feishu.api import _normalize_text, fetch_user_info
 
 
 def test_fetch_user_info_returns_dict():
@@ -43,3 +44,38 @@ def test_fetch_user_info_fallback_on_failure():
 
     info = fetch_user_info(mock_client, "ou_bbb")
     assert info["name"] == "ou_bbb"
+
+
+def test_normalize_text_keeps_interactive_card_as_raw_json_context():
+    content = json.dumps(
+        {
+            "schema": "2.0",
+            "body": {
+                "elements": [
+                    {
+                        "tag": "column_set",
+                        "columns": [
+                            {
+                                "elements": [
+                                    {
+                                        "tag": "div",
+                                        "text": {
+                                            "tag": "lark_md",
+                                            "content": "指标\\n**<font color='blue'>1,200</font>**",
+                                        },
+                                    }
+                                ]
+                            }
+                        ],
+                    }
+                ]
+            },
+        },
+        ensure_ascii=False,
+    )
+
+    text = _normalize_text("interactive", content)
+
+    assert text.startswith("[interactive message] ")
+    assert '"column_set"' in text
+    assert '"lark_md"' in text
