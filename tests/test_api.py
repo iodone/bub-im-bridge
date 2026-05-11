@@ -81,8 +81,8 @@ def test_normalize_text_keeps_interactive_card_as_raw_json_context():
     assert '"lark_md"' in text
 
 
-async def test_fetch_message_content_sets_card_msg_content_type_raw():
-    """fetch_message_content always requests raw card content via
+async def test_fetch_message_content_sets_card_msg_content_type_user_card_content():
+    """fetch_message_content always requests original card JSON via
     ``add_query`` on the built request object, bypassing the builder."""
 
     mock_req = MagicMock()
@@ -113,4 +113,4 @@ async def test_fetch_message_content_sets_card_msg_content_type_raw():
         result = await fetch_message_content(mock_client, "om_test")
 
     assert "[interactive message]" in result
-    mock_req.add_query.assert_called_once_with("card_msg_content_type", "raw")
+    mock_req.add_query.assert_called_once_with("card_msg_content_type", "user_card_content")
