@@ -32,6 +32,7 @@ from bub.types import MessageHandler
 
 from bub_im_bridge.feishu.api import (
     fetch_message_content,
+    fetch_quoted_message,
     format_feishu_timestamp,
     _normalize_text,
 )
@@ -532,10 +533,12 @@ class FeishuChannel(Channel):
         # Fetch quoted message content if this is a reply
         quoted_message = None
         if message.parent_id and self._api_client is not None:
-            quoted_message = await fetch_message_content(
+            quoted_result = await fetch_quoted_message(
                 self._api_client, message.parent_id
             )
-            if not quoted_message:
+            if quoted_result:
+                quoted_message = quoted_result
+            else:
                 logger.warning(
                     "feishu.dispatch quoted message fetch returned empty parent_id={}",
                     message.parent_id,
@@ -573,6 +576,13 @@ class FeishuChannel(Channel):
             "name": message.sender_name or "",
         }
 
+        # Self-identity: tell the model who it is
+        self_identity: dict[str, str] = {}
+        if self._bot_name:
+            self_identity["name"] = self._bot_name
+        if self._bot_open_id:
+            self_identity["open_id"] = self._bot_open_id
+
         payload: dict[str, Any] = {
             "message": message.text + FEISHU_OUTPUT_INSTRUCTION + history_hint + user_context_hint,
             "message_id": message.message_id,
@@ -584,6 +594,9 @@ class FeishuChannel(Channel):
             "reply_target": reply_target,
             "create_time": format_feishu_timestamp(message.create_time),
         }
+
+        if self_identity:
+            payload["self_identity"] = self_identity
 
         if quoted_message:
             payload["quoted_message"] = quoted_message

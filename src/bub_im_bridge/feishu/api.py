@@ -24,6 +24,18 @@ async def fetch_message_content(client: lark.Client, message_id: str) -> str | N
     Uses ``GET /open-apis/im/v1/messages/:message_id``.
     Requires ``im:message`` or ``im:message:readonly`` permission.
     """
+    result = await fetch_quoted_message(client, message_id)
+    return result["content"] if result else None
+
+
+async def fetch_quoted_message(
+    client: lark.Client, message_id: str
+) -> dict[str, str] | None:
+    """Fetch a quoted message with its content and sender info.
+
+    Returns a dict with keys: ``content``, ``sender_id``, ``sender_type``,
+    ``msg_type``.  Returns ``None`` on failure.
+    """
     api = _get_message_api(client)
     if api is None or not message_id:
         return None
@@ -74,7 +86,21 @@ async def fetch_message_content(client: lark.Client, message_id: str) -> str | N
             name = getattr(mention, "name", None)
             if key and name:
                 text = text.replace(key, f"@{name}")
-        return text
+
+        # Extract sender info from the quoted message
+        sender = getattr(item, "sender", None)
+        sender_id = ""
+        sender_type = ""
+        if sender:
+            sender_id = getattr(sender, "id", "") or ""
+            sender_type = getattr(sender, "sender_type", "") or ""
+
+        return {
+            "content": text,
+            "sender_id": sender_id,
+            "sender_type": sender_type,
+            "msg_type": msg_type,
+        }
 
     except Exception:
         logger.exception("feishu.api.fetch_message error message_id={}", message_id)
