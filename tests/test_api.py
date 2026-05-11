@@ -81,49 +81,15 @@ def test_normalize_text_keeps_interactive_card_as_raw_json_context():
     assert '"lark_md"' in text
 
 
-async def test_fetch_message_content_handles_missing_card_msg_content_type():
-    """fetch_message_content must not crash when the SDK builder lacks
-    ``card_msg_content_type`` (e.g. lark-oapi <1.7)."""
+async def test_fetch_message_content_sets_card_msg_content_type_raw():
+    """fetch_message_content always requests raw card content via
+    ``add_query`` on the built request object, bypassing the builder."""
 
-    # Simulate a builder without card_msg_content_type
-    mock_builder = MagicMock()
-    del mock_builder.card_msg_content_type
-    mock_builder.message_id.return_value = mock_builder
-    mock_builder.build.return_value = MagicMock()
-
-    mock_item = MagicMock()
-    mock_item.msg_type = "text"
-    mock_item.body.content = json.dumps({"text": "hello"})
-    mock_item.mentions = []
-
-    mock_data = MagicMock()
-    mock_data.items = [mock_item]
-
-    mock_resp = MagicMock()
-    mock_resp.success.return_value = True
-    mock_resp.data = mock_data
-
-    mock_client = MagicMock()
-    mock_client.im.v1.message.get.return_value = mock_resp
-
-    with patch(
-        "lark_oapi.api.im.v1.GetMessageRequest"
-    ) as MockReq:
-        MockReq.builder.return_value = mock_builder
-        result = await fetch_message_content(mock_client, "om_test")
-
-    assert result == "hello"
-    mock_builder.build.assert_called_once()
-
-
-async def test_fetch_message_content_uses_card_msg_content_type_when_available():
-    """When the builder supports ``card_msg_content_type``, it should be
-    called with ``"raw"`` to get the full card JSON."""
+    mock_req = MagicMock()
 
     mock_builder = MagicMock()
-    mock_builder.card_msg_content_type.return_value = mock_builder
     mock_builder.message_id.return_value = mock_builder
-    mock_builder.build.return_value = MagicMock()
+    mock_builder.build.return_value = mock_req
 
     mock_item = MagicMock()
     mock_item.msg_type = "interactive"
@@ -147,4 +113,4 @@ async def test_fetch_message_content_uses_card_msg_content_type_when_available()
         result = await fetch_message_content(mock_client, "om_test")
 
     assert "[interactive message]" in result
-    mock_builder.card_msg_content_type.assert_called_once_with("raw")
+    mock_req.add_query.assert_called_once_with("card_msg_content_type", "raw")
