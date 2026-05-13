@@ -20,13 +20,14 @@ from lark_oapi.api.im.v1 import (
     CreateMessageReactionRequestBody,
     CreateMessageRequest,
     CreateMessageRequestBody,
+    GetImageRequest,
     ReplyMessageRequest,
     ReplyMessageRequestBody,
 )
 from loguru import logger
 
 from bub.channels.base import Channel
-from bub.channels.message import ChannelMessage
+from bub.channels.message import ChannelMessage, MediaItem
 from bub.framework import BubFramework
 from bub.types import MessageHandler
 
@@ -83,6 +84,8 @@ class FeishuInboundMessage:
     mentions: tuple[FeishuMention, ...] = ()
     parent_id: str | None = None
     root_id: str | None = None
+
+    image_key: str | None = None
 
     sender_open_id: str | None = None
     sender_union_id: str | None = None
@@ -611,6 +614,28 @@ class FeishuChannel(Channel):
             context["_feishu_api_client"] = self._api_client
         context["_profile_store"] = self._profile_store
 
+        # Build media list for image messages
+        media_items: list[MediaItem] = []
+        if message.image_key and self._api_client is not None:
+            image_key = message.image_key
+            client = self._api_client
+            cached: dict[str, bytes] = {}
+
+            async def _fetch_image_data() -> bytes:
+                if "data" not in cached:
+                    data, detected_mime = await self._download_image(client, image_key)
+                    cached["data"] = data
+                    item.mime_type = detected_mime
+                return cached["data"]
+
+            item = MediaItem(
+                type="image",
+                mime_type="image/jpeg",  # placeholder, updated on first download
+                filename=f"{image_key}.jpg",
+                data_fetcher=_fetch_image_data,
+            )
+            media_items.append(item)
+
         return ChannelMessage(
             session_id=session_id,
             channel=self.name,
@@ -618,7 +643,50 @@ class FeishuChannel(Channel):
             content=json.dumps(payload, ensure_ascii=False),
             is_active=True,
             context=context,
+            media=media_items,
         )
+
+    # Extension → MIME type mapping for Feishu image responses
+    _IMAGE_MIME_MAP: dict[str, str] = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+    }
+
+    async def _download_image(
+        self, client: lark.Client, image_key: str
+    ) -> tuple[bytes, str]:
+        """Download an image from Feishu by image_key via Lark API.
+
+        Returns (image_bytes, mime_type).  The mime type is derived from
+        the ``file_name`` in the API response when possible; falls back
+        to ``image/jpeg`` only when the extension is unrecognised.
+        """
+        request = GetImageRequest.builder().image_key(image_key).build()
+        response = await client.im.v1.image.aget(request)
+        if not response.success():
+            raise RuntimeError(
+                f"Feishu image download failed: code={response.code}, "
+                f"msg={response.msg}, log_id={response.get_log_id()}"
+            )
+        file_obj = response.file
+        if file_obj is None:
+            raise RuntimeError(
+                f"Feishu image download returned no file data for {image_key}"
+            )
+        data = file_obj.read()
+
+        # Detect mime type from response file_name
+        mime_type = "image/jpeg"  # conservative default
+        file_name: str | None = getattr(response, "file_name", None)
+        if file_name:
+            ext = Path(file_name).suffix.lower()
+            mime_type = self._IMAGE_MIME_MAP.get(ext, mime_type)
+
+        return data, mime_type
 
     def _send_queue_full_notification(self, message: FeishuInboundMessage) -> None:
         """Reply directly to the dropped message without touching ``_last_message_id``."""
@@ -897,6 +965,16 @@ def _parse_event(payload: dict[str, Any]) -> FeishuInboundMessage | None:
     raw_content = str(raw_message.get("content") or "")
     text = _normalize_text(msg_type, raw_content)
 
+    # Extract image_key for image messages before normalization loses it
+    image_key: str | None = None
+    if msg_type == "image":
+        try:
+            content_obj = json.loads(raw_content)
+            if isinstance(content_obj, dict):
+                image_key = content_obj.get("image_key")
+        except (json.JSONDecodeError, AttributeError):
+            pass
+
     # Replace mention placeholder keys with display names
     for m in mentions:
         if m.key and m.name:
@@ -923,6 +1001,7 @@ def _parse_event(payload: dict[str, Any]) -> FeishuInboundMessage | None:
         sender_type=raw_sender.get("sender_type"),
         tenant_key=raw_sender.get("tenant_key"),
         create_time=str(raw_message.get("create_time") or ""),
+        image_key=image_key,
     )
 
 
