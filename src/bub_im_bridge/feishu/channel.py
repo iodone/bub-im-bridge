@@ -85,7 +85,7 @@ class FeishuInboundMessage:
     parent_id: str | None = None
     root_id: str | None = None
 
-    image_key: str | None = None
+    image_keys: list[str] = field(default_factory=list)
 
     sender_open_id: str | None = None
     sender_union_id: str | None = None
@@ -616,25 +616,26 @@ class FeishuChannel(Channel):
 
         # Build media list for image messages
         media_items: list[MediaItem] = []
-        if message.image_key and self._api_client is not None:
-            image_key = message.image_key
+        if message.image_keys and self._api_client is not None:
             client = self._api_client
-            cached: dict[str, bytes] = {}
+            for image_key in message.image_keys:
+                cached: dict[str, bytes] = {}
+                ik = image_key  # capture for closure
 
-            async def _fetch_image_data() -> bytes:
-                if "data" not in cached:
-                    data, detected_mime = await self._download_image(client, image_key)
-                    cached["data"] = data
-                    item.mime_type = detected_mime
-                return cached["data"]
+                async def _fetch_image_data(ikey: str = ik, _c: dict = cached) -> bytes:
+                    if "data" not in _c:
+                        data, detected_mime = await self._download_image(client, ikey)
+                        _c["data"] = data
+                        _item.mime_type = detected_mime
+                    return _c["data"]
 
-            item = MediaItem(
-                type="image",
-                mime_type="image/jpeg",  # placeholder, updated on first download
-                filename=f"{image_key}.jpg",
-                data_fetcher=_fetch_image_data,
-            )
-            media_items.append(item)
+                _item = MediaItem(
+                    type="image",
+                    mime_type="image/jpeg",  # placeholder, updated on first download
+                    filename=f"{ik}.jpg",
+                    data_fetcher=_fetch_image_data,
+                )
+                media_items.append(_item)
 
         return ChannelMessage(
             session_id=session_id,
@@ -965,15 +966,31 @@ def _parse_event(payload: dict[str, Any]) -> FeishuInboundMessage | None:
     raw_content = str(raw_message.get("content") or "")
     text = _normalize_text(msg_type, raw_content)
 
-    # Extract image_key for image messages before normalization loses it
-    image_key: str | None = None
-    if msg_type == "image":
-        try:
-            content_obj = json.loads(raw_content)
-            if isinstance(content_obj, dict):
-                image_key = content_obj.get("image_key")
-        except (json.JSONDecodeError, AttributeError):
-            pass
+    # Extract image keys from message content.
+    # - msg_type "image": top-level image_key
+    # - msg_type "post": scan nested content for {"tag":"img","image_key":...}
+    image_keys: list[str] = []
+    try:
+        content_obj = json.loads(raw_content)
+        if isinstance(content_obj, dict):
+            if msg_type == "image":
+                ik = content_obj.get("image_key")
+                if ik:
+                    image_keys.append(ik)
+            elif msg_type == "post":
+                # post content structure: {"title":"...","content":[[{"tag":"img","image_key":"..."},...]]}
+                for paragraph in content_obj.get("content", []):
+                    if not isinstance(paragraph, list):
+                        continue
+                    for element in paragraph:
+                        if not isinstance(element, dict):
+                            continue
+                        if element.get("tag") == "img":
+                            ik = element.get("image_key")
+                            if ik:
+                                image_keys.append(ik)
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        pass
 
     # Replace mention placeholder keys with display names
     for m in mentions:
@@ -1001,7 +1018,7 @@ def _parse_event(payload: dict[str, Any]) -> FeishuInboundMessage | None:
         sender_type=raw_sender.get("sender_type"),
         tenant_key=raw_sender.get("tenant_key"),
         create_time=str(raw_message.get("create_time") or ""),
-        image_key=image_key,
+        image_keys=image_keys,
     )
 
 
