@@ -705,13 +705,16 @@ class FeishuChannel(Channel):
         if not response.success():
             raw = response.raw
             status = getattr(raw, "status_code", "?") if raw else "?"
+            file_obj = response.file
+            file_size = len(file_obj.getvalue()) if file_obj is not None else -1
+            raw_body = ""
+            if raw and hasattr(raw, "content") and raw.content:
+                raw_body = str(raw.content[:500], errors="replace")
             logger.warning(
                 "feishu.image_download_failed image_key={} http_status={} "
-                "code={} msg={} log_id={} has_file={} has_raw={} response_type={}",
+                "code={} msg={} log_id={} file_size={} raw_body_preview={}",
                 image_key, status, response.code, response.msg,
-                response.get_log_id(),
-                hasattr(response, "file"), raw is not None,
-                type(response).__name__,
+                response.get_log_id(), file_size, raw_body,
             )
             raise RuntimeError(
                 f"Feishu image download failed: http_status={status}, "
