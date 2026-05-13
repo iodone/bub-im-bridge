@@ -497,7 +497,7 @@ class TestQuotedMessageImages:
                 resp.file_name = "second.webp"
             return resp
 
-        mock_client.im.v1.image.aget = mock_aget
+        mock_client.im.v1.message_resource.aget = mock_aget
 
         raw = _make_raw_post_event(elements=[
             [{"tag": "img", "image_key": "img_png"}],
@@ -550,7 +550,7 @@ class TestMediaItemGetUrl:
         mock_response.file = mock_file
         mock_response.file_name = "test.jpg"
 
-        mock_client.im.v1.image.aget = AsyncMock(return_value=mock_response)
+        mock_client.im.v1.message_resource.aget = AsyncMock(return_value=mock_response)
 
         raw = _make_raw_image_event(image_key="img_v3_fetch_test")
         msg = _parse_event(raw)
@@ -568,7 +568,7 @@ class TestMediaItemGetUrl:
         assert url is not None
         assert url.startswith("data:image/jpeg;base64,")
         assert item.mime_type == "image/jpeg"
-        mock_client.im.v1.image.aget.assert_called_once()
+        mock_client.im.v1.message_resource.aget.assert_called_once()
 
     async def test_png_response_produces_correct_data_uri(self, tmp_path: Path):
         """Regression: a PNG response must NOT produce data:image/jpeg prefix."""
@@ -585,7 +585,7 @@ class TestMediaItemGetUrl:
         mock_response.file = mock_file
         mock_response.file_name = "screenshot.png"
 
-        mock_client.im.v1.image.aget = AsyncMock(return_value=mock_response)
+        mock_client.im.v1.message_resource.aget = AsyncMock(return_value=mock_response)
 
         raw = _make_raw_image_event(image_key="img_v3_png")
         msg = _parse_event(raw)
@@ -615,7 +615,7 @@ class TestMediaItemGetUrl:
         mock_response.file = mock_file
         mock_response.file_name = "photo.webp"
 
-        mock_client.im.v1.image.aget = AsyncMock(return_value=mock_response)
+        mock_client.im.v1.message_resource.aget = AsyncMock(return_value=mock_response)
 
         raw = _make_raw_image_event(image_key="img_v3_webp")
         msg = _parse_event(raw)
@@ -645,7 +645,7 @@ class TestMediaItemGetUrl:
         mock_response.file = mock_file
         mock_response.file_name = "image.xyz"
 
-        mock_client.im.v1.image.aget = AsyncMock(return_value=mock_response)
+        mock_client.im.v1.message_resource.aget = AsyncMock(return_value=mock_response)
 
         raw = _make_raw_image_event(image_key="img_v3_unknown")
         msg = _parse_event(raw)
@@ -673,7 +673,7 @@ class TestMediaItemGetUrl:
         mock_response.msg = "image not found"
         mock_response.get_log_id.return_value = "log_abc"
 
-        mock_client.im.v1.image.aget = AsyncMock(return_value=mock_response)
+        mock_client.im.v1.message_resource.aget = AsyncMock(return_value=mock_response)
 
         raw = _make_raw_image_event(image_key="img_v3_bad")
         msg = _parse_event(raw)
