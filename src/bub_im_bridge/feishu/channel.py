@@ -619,18 +619,22 @@ class FeishuChannel(Channel):
         if message.image_key and self._api_client is not None:
             image_key = message.image_key
             client = self._api_client
+            cached: dict[str, bytes] = {}
 
             async def _fetch_image_data() -> bytes:
-                return await self._download_image(client, image_key)
+                if "data" not in cached:
+                    data, detected_mime = await self._download_image(client, image_key)
+                    cached["data"] = data
+                    item.mime_type = detected_mime
+                return cached["data"]
 
-            media_items.append(
-                MediaItem(
-                    type="image",
-                    mime_type="image/jpeg",
-                    filename=f"{image_key}.jpg",
-                    data_fetcher=_fetch_image_data,
-                )
+            item = MediaItem(
+                type="image",
+                mime_type="image/jpeg",  # placeholder, updated on first download
+                filename=f"{image_key}.jpg",
+                data_fetcher=_fetch_image_data,
             )
+            media_items.append(item)
 
         return ChannelMessage(
             session_id=session_id,
@@ -642,10 +646,25 @@ class FeishuChannel(Channel):
             media=media_items,
         )
 
+    # Extension → MIME type mapping for Feishu image responses
+    _IMAGE_MIME_MAP: dict[str, str] = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+    }
+
     async def _download_image(
         self, client: lark.Client, image_key: str
-    ) -> bytes:
-        """Download an image from Feishu by image_key via Lark API."""
+    ) -> tuple[bytes, str]:
+        """Download an image from Feishu by image_key via Lark API.
+
+        Returns (image_bytes, mime_type).  The mime type is derived from
+        the ``file_name`` in the API response when possible; falls back
+        to ``image/jpeg`` only when the extension is unrecognised.
+        """
         request = GetImageRequest.builder().image_key(image_key).build()
         response = await client.im.v1.image.aget(request)
         if not response.success():
@@ -658,7 +677,16 @@ class FeishuChannel(Channel):
             raise RuntimeError(
                 f"Feishu image download returned no file data for {image_key}"
             )
-        return file_obj.read()
+        data = file_obj.read()
+
+        # Detect mime type from response file_name
+        mime_type = "image/jpeg"  # conservative default
+        file_name: str | None = getattr(response, "file_name", None)
+        if file_name:
+            ext = Path(file_name).suffix.lower()
+            mime_type = self._IMAGE_MIME_MAP.get(ext, mime_type)
+
+        return data, mime_type
 
     def _send_queue_full_notification(self, message: FeishuInboundMessage) -> None:
         """Reply directly to the dropped message without touching ``_last_message_id``."""

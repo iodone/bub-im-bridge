@@ -218,12 +218,10 @@ class TestMediaItemGetUrl:
         """MediaItem.get_url() should call data_fetcher and return a data: URI."""
         channel = _make_channel(tmp_path)
 
-        # Create a mock API client
         mock_client = MagicMock()
         channel._api_client = mock_client
 
-        # Mock the image download response
-        fake_image_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 100  # fake JPEG header
+        fake_image_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 100  # fake JPEG bytes
         mock_file = io.BytesIO(fake_image_bytes)
 
         mock_response = MagicMock()
@@ -233,7 +231,6 @@ class TestMediaItemGetUrl:
 
         mock_client.im.v1.image.aget = AsyncMock(return_value=mock_response)
 
-        # Build message with image
         raw = _make_raw_image_event(image_key="img_v3_fetch_test")
         msg = _parse_event(raw)
         assert msg is not None
@@ -245,12 +242,102 @@ class TestMediaItemGetUrl:
         assert len(channel_msg.media) == 1
         item = channel_msg.media[0]
 
-        # Call get_url — this should trigger the lazy download
         url = await item.get_url()
 
         assert url is not None
         assert url.startswith("data:image/jpeg;base64,")
+        assert item.mime_type == "image/jpeg"
         mock_client.im.v1.image.aget.assert_called_once()
+
+    async def test_png_response_produces_correct_data_uri(self, tmp_path: Path):
+        """Regression: a PNG response must NOT produce data:image/jpeg prefix."""
+        channel = _make_channel(tmp_path)
+
+        mock_client = MagicMock()
+        channel._api_client = mock_client
+
+        png_header = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
+        mock_file = io.BytesIO(png_header)
+
+        mock_response = MagicMock()
+        mock_response.success.return_value = True
+        mock_response.file = mock_file
+        mock_response.file_name = "screenshot.png"
+
+        mock_client.im.v1.image.aget = AsyncMock(return_value=mock_response)
+
+        raw = _make_raw_image_event(image_key="img_v3_png")
+        msg = _parse_event(raw)
+        assert msg is not None
+
+        channel_msg = await channel._build_channel_message(
+            msg, msg.text, "ou_sender", "feishu:chat_001"
+        )
+
+        item = channel_msg.media[0]
+        url = await item.get_url()
+
+        assert url.startswith("data:image/png;base64,")
+        assert item.mime_type == "image/png"
+
+    async def test_webp_response_produces_correct_data_uri(self, tmp_path: Path):
+        """WebP response should produce data:image/webp prefix."""
+        channel = _make_channel(tmp_path)
+
+        mock_client = MagicMock()
+        channel._api_client = mock_client
+
+        mock_file = io.BytesIO(b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 20)
+
+        mock_response = MagicMock()
+        mock_response.success.return_value = True
+        mock_response.file = mock_file
+        mock_response.file_name = "photo.webp"
+
+        mock_client.im.v1.image.aget = AsyncMock(return_value=mock_response)
+
+        raw = _make_raw_image_event(image_key="img_v3_webp")
+        msg = _parse_event(raw)
+        assert msg is not None
+
+        channel_msg = await channel._build_channel_message(
+            msg, msg.text, "ou_sender", "feishu:chat_001"
+        )
+
+        item = channel_msg.media[0]
+        url = await item.get_url()
+
+        assert url.startswith("data:image/webp;base64,")
+        assert item.mime_type == "image/webp"
+
+    async def test_unknown_extension_falls_back_to_jpeg(self, tmp_path: Path):
+        """Unknown extension should fall back to image/jpeg."""
+        channel = _make_channel(tmp_path)
+
+        mock_client = MagicMock()
+        channel._api_client = mock_client
+
+        mock_file = io.BytesIO(b"\x00" * 10)
+
+        mock_response = MagicMock()
+        mock_response.success.return_value = True
+        mock_response.file = mock_file
+        mock_response.file_name = "image.xyz"
+
+        mock_client.im.v1.image.aget = AsyncMock(return_value=mock_response)
+
+        raw = _make_raw_image_event(image_key="img_v3_unknown")
+        msg = _parse_event(raw)
+        assert msg is not None
+
+        channel_msg = await channel._build_channel_message(
+            msg, msg.text, "ou_sender", "feishu:chat_001"
+        )
+
+        item = channel_msg.media[0]
+        url = await item.get_url()
+
+        assert url.startswith("data:image/jpeg;base64,")
 
     async def test_get_url_propagates_download_error(self, tmp_path: Path):
         """When download fails, get_url() should propagate the error."""
