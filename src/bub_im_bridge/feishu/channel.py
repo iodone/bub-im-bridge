@@ -703,9 +703,19 @@ class FeishuChannel(Channel):
         request = GetImageRequest.builder().image_key(image_key).build()
         response = await client.im.v1.image.aget(request)
         if not response.success():
+            raw = response.raw
+            status = getattr(raw, "status_code", "?") if raw else "?"
+            logger.warning(
+                "feishu.image_download_failed image_key={} http_status={} "
+                "code={} msg={} log_id={} has_file={} has_raw={} response_type={}",
+                image_key, status, response.code, response.msg,
+                response.get_log_id(),
+                hasattr(response, "file"), raw is not None,
+                type(response).__name__,
+            )
             raise RuntimeError(
-                f"Feishu image download failed: code={response.code}, "
-                f"msg={response.msg}, log_id={response.get_log_id()}"
+                f"Feishu image download failed: http_status={status}, "
+                f"code={response.code}, msg={response.msg}, image_key={image_key}"
             )
         file_obj = response.file
         if file_obj is None:
