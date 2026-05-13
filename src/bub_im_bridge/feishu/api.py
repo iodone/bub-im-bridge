@@ -95,11 +95,31 @@ async def fetch_quoted_message(
             sender_id = getattr(sender, "id", "") or ""
             sender_type = getattr(sender, "sender_type", "") or ""
 
+        # Extract image keys from the quoted message
+        image_keys: list[str] = []
+        with contextlib.suppress(json.JSONDecodeError, AttributeError, TypeError):
+            content_obj = json.loads(content)
+            if isinstance(content_obj, dict):
+                if msg_type == "image":
+                    ik = content_obj.get("image_key")
+                    if ik:
+                        image_keys.append(ik)
+                elif msg_type == "post":
+                    for paragraph in content_obj.get("content", []):
+                        if not isinstance(paragraph, list):
+                            continue
+                        for element in paragraph:
+                            if isinstance(element, dict) and element.get("tag") == "img":
+                                ik = element.get("image_key")
+                                if ik:
+                                    image_keys.append(ik)
+
         return {
             "content": text,
             "sender_id": sender_id,
             "sender_type": sender_type,
             "msg_type": msg_type,
+            "image_keys": image_keys,
         }
 
     except Exception:

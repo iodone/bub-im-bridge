@@ -616,8 +616,10 @@ class FeishuChannel(Channel):
 
         # Build media list for image messages
         media_items: list[MediaItem] = []
-        if message.image_keys and self._api_client is not None:
+        if self._api_client is not None:
             client = self._api_client
+
+            # Current message images
             for image_key in message.image_keys:
                 cached: dict[str, bytes] = {}
                 ik = image_key  # capture for closure
@@ -636,6 +638,32 @@ class FeishuChannel(Channel):
                     data_fetcher=_fetch_image_data,
                 )
                 media_items.append(_item)
+
+            # Quoted message images (from the replied-to message)
+            if quoted_message and quoted_message.get("image_keys"):
+                quoted_keys = quoted_message["image_keys"]
+                for image_key in quoted_keys:
+                    cached: dict[str, bytes] = {}
+                    ik = image_key
+
+                    async def _fetch_quoted_data(ikey: str = ik, _c: dict = cached) -> bytes:
+                        if "data" not in _c:
+                            data, detected_mime = await self._download_image(client, ikey)
+                            _c["data"] = data
+                            _qi.mime_type = detected_mime
+                        return _c["data"]
+
+                    _qi = MediaItem(
+                        type="image",
+                        mime_type="image/jpeg",
+                        filename=f"quoted:{ik}.jpg",
+                        data_fetcher=_fetch_quoted_data,
+                    )
+                    media_items.append(_qi)
+
+                # Signal in payload that quoted images exist
+                payload["has_quoted_images"] = True
+                payload["quoted_image_count"] = len(quoted_keys)
 
         return ChannelMessage(
             session_id=session_id,

@@ -339,6 +339,139 @@ class TestBuildChannelMessageMedia:
 
 
 # ---------------------------------------------------------------------------
+# _build_channel_message: quoted message images
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestQuotedMessageImages:
+    """Verify quoted message images are included in MediaItem list."""
+
+    async def test_quoted_image_message_produces_media_item(self, tmp_path: Path):
+        """When replying to an image message, its image should be in media."""
+        channel = _make_channel(tmp_path)
+        mock_client = MagicMock()
+        channel._api_client = mock_client
+
+        # Mock fetch_quoted_message to return an image message
+        with patch(
+            "bub_im_bridge.feishu.channel.fetch_quoted_message",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = {
+                "content": "[image message]",
+                "sender_id": "ou_quoted",
+                "sender_type": "user",
+                "msg_type": "image",
+                "image_keys": ["img_v3_quoted_001"],
+            }
+
+            raw = _make_raw_text_event()
+            raw["event"]["message"]["parent_id"] = "msg_parent"
+            msg = _parse_event(raw)
+            assert msg is not None
+
+            channel_msg = await channel._build_channel_message(
+                msg, msg.text, "ou_sender", "feishu:chat_001"
+            )
+
+        assert len(channel_msg.media) == 1
+        item = channel_msg.media[0]
+        assert item.type == "image"
+        assert item.filename == "quoted:img_v3_quoted_001.jpg"
+        assert item.data_fetcher is not None
+
+    async def test_payload_marks_quoted_images(self, tmp_path: Path):
+        """Payload should include has_quoted_images when quoted message has images."""
+        channel = _make_channel(tmp_path)
+        channel._api_client = MagicMock()
+
+        with patch(
+            "bub_im_bridge.feishu.channel.fetch_quoted_message",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = {
+                "content": "[image message]",
+                "sender_id": "ou_quoted",
+                "sender_type": "user",
+                "msg_type": "image",
+                "image_keys": ["img_v3_q1", "img_v3_q2"],
+            }
+
+            raw = _make_raw_text_event()
+            raw["event"]["message"]["parent_id"] = "msg_parent"
+            msg = _parse_event(raw)
+
+            channel_msg = await channel._build_channel_message(
+                msg, msg.text, "ou_sender", "feishu:chat_001"
+            )
+
+        payload = json.loads(channel_msg.content)
+        assert payload.get("has_quoted_images") is True
+        assert payload.get("quoted_image_count") == 2
+        assert len(channel_msg.media) == 2
+
+    async def test_no_quoted_images_when_quoted_has_none(self, tmp_path: Path):
+        """When quoted message has no images, media should be empty."""
+        channel = _make_channel(tmp_path)
+        channel._api_client = MagicMock()
+
+        with patch(
+            "bub_im_bridge.feishu.channel.fetch_quoted_message",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = {
+                "content": "just text reply",
+                "sender_id": "ou_quoted",
+                "sender_type": "user",
+                "msg_type": "text",
+                "image_keys": [],
+            }
+
+            raw = _make_raw_text_event()
+            raw["event"]["message"]["parent_id"] = "msg_parent"
+            msg = _parse_event(raw)
+
+            channel_msg = await channel._build_channel_message(
+                msg, msg.text, "ou_sender", "feishu:chat_001"
+            )
+
+        assert channel_msg.media == []
+        payload = json.loads(channel_msg.content)
+        assert "has_quoted_images" not in payload
+
+    async def test_current_and_quoted_images_both_in_media(self, tmp_path: Path):
+        """Both current message images and quoted images should be in media list."""
+        channel = _make_channel(tmp_path)
+        channel._api_client = MagicMock()
+
+        with patch(
+            "bub_im_bridge.feishu.channel.fetch_quoted_message",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = {
+                "content": "[image message]",
+                "sender_id": "ou_quoted",
+                "sender_type": "user",
+                "msg_type": "image",
+                "image_keys": ["img_v3_quoted"],
+            }
+
+            raw = _make_raw_image_event(image_key="img_v3_current")
+            raw["event"]["message"]["parent_id"] = "msg_parent"
+            msg = _parse_event(raw)
+
+            channel_msg = await channel._build_channel_message(
+                msg, msg.text, "ou_sender", "feishu:chat_001"
+            )
+
+        assert len(channel_msg.media) == 2
+        filenames = {item.filename for item in channel_msg.media}
+        assert "img_v3_current.jpg" in filenames
+        assert "quoted:img_v3_quoted.jpg" in filenames
+
+
+# ---------------------------------------------------------------------------
 # MediaItem.get_url() lazy download
 # ---------------------------------------------------------------------------
 
