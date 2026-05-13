@@ -470,6 +470,61 @@ class TestQuotedMessageImages:
         assert "img_v3_current.jpg" in filenames
         assert "quoted:img_v3_quoted.jpg" in filenames
 
+    async def test_multi_image_mime_does_not_cross_contaminate(self, tmp_path: Path):
+        """Regression: each image's mime_type must reflect its own download,
+        not the last image downloaded (late-binding closure bug)."""
+        channel = _make_channel(tmp_path)
+
+        mock_client = MagicMock()
+        channel._api_client = mock_client
+
+        # Two images: first is PNG, second is WebP
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+        webp_bytes = b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 20
+
+        call_count = 0
+
+        async def mock_aget(request):
+            nonlocal call_count
+            call_count += 1
+            resp = MagicMock()
+            resp.success.return_value = True
+            if call_count == 1:
+                resp.file = io.BytesIO(png_bytes)
+                resp.file_name = "first.png"
+            else:
+                resp.file = io.BytesIO(webp_bytes)
+                resp.file_name = "second.webp"
+            return resp
+
+        mock_client.im.v1.image.aget = mock_aget
+
+        raw = _make_raw_post_event(elements=[
+            [{"tag": "img", "image_key": "img_png"}],
+            [{"tag": "img", "image_key": "img_webp"}],
+        ])
+        msg = _parse_event(raw)
+        assert msg is not None
+
+        channel_msg = await channel._build_channel_message(
+            msg, msg.text, "ou_sender", "feishu:chat_001"
+        )
+
+        assert len(channel_msg.media) == 2
+
+        # Download first image (PNG)
+        url0 = await channel_msg.media[0].get_url()
+        assert url0.startswith("data:image/png;base64,")
+        assert channel_msg.media[0].mime_type == "image/png"
+
+        # Download second image (WebP) — must NOT affect first image's mime_type
+        url1 = await channel_msg.media[1].get_url()
+        assert url1.startswith("data:image/webp;base64,")
+        assert channel_msg.media[1].mime_type == "image/webp"
+
+        # First image's mime_type must still be correct
+        assert channel_msg.media[0].mime_type == "image/png"
+
 
 # ---------------------------------------------------------------------------
 # MediaItem.get_url() lazy download

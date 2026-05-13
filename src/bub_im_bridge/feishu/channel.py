@@ -624,19 +624,22 @@ class FeishuChannel(Channel):
                 cached: dict[str, bytes] = {}
                 ik = image_key  # capture for closure
 
-                async def _fetch_image_data(ikey: str = ik, _c: dict = cached) -> bytes:
-                    if "data" not in _c:
-                        data, detected_mime = await self._download_image(client, ikey)
-                        _c["data"] = data
-                        _item.mime_type = detected_mime
-                    return _c["data"]
-
                 _item = MediaItem(
                     type="image",
                     mime_type="image/jpeg",  # placeholder, updated on first download
                     filename=f"{ik}.jpg",
-                    data_fetcher=_fetch_image_data,
                 )
+
+                async def _fetch_image_data(
+                    ikey: str = ik, _c: dict = cached, _mi: MediaItem = _item
+                ) -> bytes:
+                    if "data" not in _c:
+                        data, detected_mime = await self._download_image(client, ikey)
+                        _c["data"] = data
+                        _mi.mime_type = detected_mime
+                    return _c["data"]
+
+                _item.data_fetcher = _fetch_image_data
                 media_items.append(_item)
 
             # Quoted message images (from the replied-to message)
@@ -646,19 +649,22 @@ class FeishuChannel(Channel):
                     cached: dict[str, bytes] = {}
                     ik = image_key
 
-                    async def _fetch_quoted_data(ikey: str = ik, _c: dict = cached) -> bytes:
-                        if "data" not in _c:
-                            data, detected_mime = await self._download_image(client, ikey)
-                            _c["data"] = data
-                            _qi.mime_type = detected_mime
-                        return _c["data"]
-
                     _qi = MediaItem(
                         type="image",
                         mime_type="image/jpeg",
                         filename=f"quoted:{ik}.jpg",
-                        data_fetcher=_fetch_quoted_data,
                     )
+
+                    async def _fetch_quoted_data(
+                        ikey: str = ik, _c: dict = cached, _mi: MediaItem = _qi
+                    ) -> bytes:
+                        if "data" not in _c:
+                            data, detected_mime = await self._download_image(client, ikey)
+                            _c["data"] = data
+                            _mi.mime_type = detected_mime
+                        return _c["data"]
+
+                    _qi.data_fetcher = _fetch_quoted_data
                     media_items.append(_qi)
 
                 # Signal in payload that quoted images exist
