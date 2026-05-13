@@ -20,7 +20,7 @@ from lark_oapi.api.im.v1 import (
     CreateMessageReactionRequestBody,
     CreateMessageRequest,
     CreateMessageRequestBody,
-    GetImageRequest,
+    GetMessageResourceRequest,
     ReplyMessageRequest,
     ReplyMessageRequestBody,
 )
@@ -623,6 +623,7 @@ class FeishuChannel(Channel):
             for image_key in message.image_keys:
                 cached: dict[str, bytes] = {}
                 ik = image_key  # capture for closure
+                mid = message.message_id  # capture for closure
 
                 _item = MediaItem(
                     type="image",
@@ -631,10 +632,10 @@ class FeishuChannel(Channel):
                 )
 
                 async def _fetch_image_data(
-                    ikey: str = ik, _c: dict = cached, _mi: MediaItem = _item
+                    ikey: str = ik, _mid: str = mid, _c: dict = cached, _mi: MediaItem = _item
                 ) -> bytes:
                     if "data" not in _c:
-                        data, detected_mime = await self._download_image(client, ikey)
+                        data, detected_mime = await self._download_image(client, _mid, ikey)
                         _c["data"] = data
                         _mi.mime_type = detected_mime
                     return _c["data"]
@@ -645,6 +646,7 @@ class FeishuChannel(Channel):
             # Quoted message images (from the replied-to message)
             if quoted_message and quoted_message.get("image_keys"):
                 quoted_keys = quoted_message["image_keys"]
+                quoted_mid = message.parent_id  # the quoted message's ID
                 for image_key in quoted_keys:
                     cached: dict[str, bytes] = {}
                     ik = image_key
@@ -656,10 +658,10 @@ class FeishuChannel(Channel):
                     )
 
                     async def _fetch_quoted_data(
-                        ikey: str = ik, _c: dict = cached, _mi: MediaItem = _qi
+                        ikey: str = ik, _mid: str = quoted_mid, _c: dict = cached, _mi: MediaItem = _qi
                     ) -> bytes:
                         if "data" not in _c:
-                            data, detected_mime = await self._download_image(client, ikey)
+                            data, detected_mime = await self._download_image(client, _mid, ikey)
                             _c["data"] = data
                             _mi.mime_type = detected_mime
                         return _c["data"]
@@ -692,33 +694,33 @@ class FeishuChannel(Channel):
     }
 
     async def _download_image(
-        self, client: lark.Client, image_key: str
+        self, client: lark.Client, message_id: str, image_key: str
     ) -> tuple[bytes, str]:
-        """Download an image from Feishu by image_key via Lark API.
+        """Download an image from a Feishu message via the message resource API.
+
+        Uses ``GET /open-apis/im/v1/messages/:message_id/resources/:file_key``
+        which is the correct endpoint for user-sent images (not the bot-upload
+        ``/images/:image_key`` endpoint).
 
         Returns (image_bytes, mime_type).  The mime type is derived from
         the ``file_name`` in the API response when possible; falls back
         to ``image/jpeg`` only when the extension is unrecognised.
         """
-        request = GetImageRequest.builder().image_key(image_key).build()
-        response = await client.im.v1.image.aget(request)
+        request = (
+            GetMessageResourceRequest.builder()
+            .message_id(message_id)
+            .file_key(image_key)
+            .type("image")
+            .build()
+        )
+        response = await client.im.v1.message_resource.aget(request)
         if not response.success():
             raw = response.raw
             status = getattr(raw, "status_code", "?") if raw else "?"
-            file_obj = response.file
-            file_size = len(file_obj.getvalue()) if file_obj is not None else -1
-            raw_body = ""
-            if raw and hasattr(raw, "content") and raw.content:
-                raw_body = str(raw.content[:500], errors="replace")
-            logger.warning(
-                "feishu.image_download_failed image_key={} http_status={} "
-                "code={} msg={} log_id={} file_size={} raw_body_preview={}",
-                image_key, status, response.code, response.msg,
-                response.get_log_id(), file_size, raw_body,
-            )
             raise RuntimeError(
                 f"Feishu image download failed: http_status={status}, "
-                f"code={response.code}, msg={response.msg}, image_key={image_key}"
+                f"code={response.code}, msg={response.msg}, "
+                f"message_id={message_id}, image_key={image_key}"
             )
         file_obj = response.file
         if file_obj is None:
