@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -395,3 +395,63 @@ class TestActorContextIntegration:
             sender_name="Alice",
         )
         assert msg.sender_display == "Alice"
+
+
+class TestGroupCommandActivation:
+    """Group-chat activation rules around slash/comma commands."""
+
+    def test_group_slash_command_requires_admin(self, tmp_path: Path):
+        channel = _make_channel(tmp_path)
+        msg = FeishuInboundMessage(
+            message_id="m1",
+            chat_id="c1",
+            chat_type="group",
+            message_type="text",
+            text="/openapi/resource/mysql/list",
+            sender_open_id="ou_non_admin",
+            sender_name="User",
+        )
+
+        with patch("bub_im_bridge.feishu.channel.is_admin_sender", return_value=False):
+            is_active, reason = channel._check_active(msg)
+
+        assert is_active is False
+        assert reason == "group_command_not_admin"
+
+    def test_group_slash_command_allows_admin(self, tmp_path: Path):
+        channel = _make_channel(tmp_path)
+        msg = FeishuInboundMessage(
+            message_id="m1",
+            chat_id="c1",
+            chat_type="group",
+            message_type="text",
+            text="/openapi/resource/mysql/list",
+            sender_open_id="ou_admin",
+            sender_name="Admin",
+        )
+
+        with patch("bub_im_bridge.feishu.channel.is_admin_sender", return_value=True):
+            is_active, reason = channel._check_active(msg)
+
+        assert is_active is True
+        assert reason == "group_command_admin"
+
+    def test_group_bot_mention_still_works_for_non_admin(self, tmp_path: Path):
+        channel = _make_channel(tmp_path)
+        channel._bot_open_id = "ou_bot"
+        msg = FeishuInboundMessage(
+            message_id="m1",
+            chat_id="c1",
+            chat_type="group",
+            message_type="text",
+            text="@Philip 帮我看看",
+            sender_open_id="ou_non_admin",
+            sender_name="User",
+            mentions=(FeishuMention(open_id="ou_bot", name="Philip", key="@_u1"),),
+        )
+
+        with patch("bub_im_bridge.feishu.channel.is_admin_sender", return_value=False):
+            is_active, reason = channel._check_active(msg)
+
+        assert is_active is True
+        assert reason == "bot_mentioned"

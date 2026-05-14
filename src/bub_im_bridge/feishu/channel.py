@@ -398,9 +398,11 @@ class FeishuChannel(Channel):
         # Group chat: check for @mentions or quoted message
         text = message.text.strip()
 
-        # Commands always trigger
+        # Group commands are admin-only. Plain mentions still work for everyone.
         if text.startswith(",") or text.startswith("/"):
-            return True, "command"
+            if is_admin_sender(message.sender_open_id):
+                return True, "group_command_admin"
+            return False, "group_command_not_admin"
 
         # Exact bot open_id match (with or without quoted message)
         if self._bot_open_id and any(
