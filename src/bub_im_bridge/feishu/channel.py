@@ -86,6 +86,9 @@ class FeishuInboundMessage:
     root_id: str | None = None
 
     image_keys: list[str] = field(default_factory=list)
+    file_key: str | None = None        # video/audio/file attachment key
+    file_name: str | None = None       # original filename (media messages)
+    duration: int | None = None        # video/audio duration in ms
 
     sender_open_id: str | None = None
     sender_union_id: str | None = None
@@ -1018,11 +1021,24 @@ def _parse_event(payload: dict[str, Any]) -> FeishuInboundMessage | None:
     # Extract image keys from message content.
     # - msg_type "image": top-level image_key
     # - msg_type "post": scan nested content for {"tag":"img","image_key":...}
+    # - msg_type "media": file_key + image_key (cover) + duration
     image_keys: list[str] = []
+    file_key: str | None = None
+    file_name: str | None = None
+    duration_ms: int | None = None
     try:
         content_obj = json.loads(raw_content)
         if isinstance(content_obj, dict):
             if msg_type == "image":
+                ik = content_obj.get("image_key")
+                if ik:
+                    image_keys.append(ik)
+            elif msg_type == "media":
+                file_key = content_obj.get("file_key") or None
+                file_name = content_obj.get("file_name") or None
+                dur = content_obj.get("duration")
+                duration_ms = int(dur) if dur else None
+                # Also extract cover image key if present
                 ik = content_obj.get("image_key")
                 if ik:
                     image_keys.append(ik)
@@ -1068,6 +1084,9 @@ def _parse_event(payload: dict[str, Any]) -> FeishuInboundMessage | None:
         tenant_key=raw_sender.get("tenant_key"),
         create_time=str(raw_message.get("create_time") or ""),
         image_keys=image_keys,
+        file_key=file_key,
+        file_name=file_name,
+        duration=duration_ms,
     )
 
 
