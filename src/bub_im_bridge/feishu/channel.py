@@ -206,6 +206,8 @@ class FeishuChannel(Channel):
                 self._encrypt_key,
             )
             .register_p2_im_message_receive_v1(self._on_ws_event)
+            .register_p2_im_message_reaction_created_v1(lambda _: None)
+            .register_p2_im_message_reaction_deleted_v1(lambda _: None)
             .build()
         )
 
