@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from bub_im_bridge.feishu.api import _normalize_text, fetch_message_content, fetch_quoted_message, fetch_user_info
+from bub_im_bridge.feishu.api import _normalize_text, fetch_chat_history, fetch_message_content, fetch_quoted_message, fetch_user_info
 
 
 def test_fetch_user_info_returns_dict():
@@ -204,3 +204,52 @@ async def test_fetch_quoted_message_bot_sender():
     assert result["sender_id"] == "ou_96f06d22c01e55dd7b8706fe2e314508"
     assert result["sender_type"] == "app"
     assert result["msg_type"] == "interactive"
+
+
+async def test_fetch_chat_history_sets_card_msg_content_type():
+    """fetch_chat_history requests user_card_content so interactive card
+    messages return parsed text instead of raw card JSON."""
+
+    mock_req = MagicMock()
+
+    mock_builder = MagicMock()
+    mock_builder.container_id_type.return_value = mock_builder
+    mock_builder.container_id.return_value = mock_builder
+    mock_builder.page_size.return_value = mock_builder
+    mock_builder.build.return_value = mock_req
+
+    mock_sender = MagicMock()
+    mock_sender.id = "ou_user123"
+
+    mock_item = MagicMock()
+    mock_item.msg_type = "text"
+    mock_item.body.content = json.dumps({"text": "hello"})
+    mock_item.mentions = []
+    mock_item.sender = mock_sender
+    mock_item.message_id = "om_test"
+    mock_item.create_time = "1716288000000"
+
+    mock_data = MagicMock()
+    mock_data.items = [mock_item]
+    mock_data.has_more = False
+
+    mock_resp = MagicMock()
+    mock_resp.success.return_value = True
+    mock_resp.data = mock_data
+
+    mock_client = MagicMock()
+    mock_client.im.v1.message.list.return_value = mock_resp
+
+    with patch(
+        "lark_oapi.api.im.v1.ListMessageRequest"
+    ) as MockReq:
+        MockReq.builder.return_value = mock_builder
+        result = await fetch_chat_history(
+            mock_client, "oc_test_chat", resolve_names=False
+        )
+
+    assert len(result) == 1
+    assert result[0]["content"] == "hello"
+    mock_req.add_query.assert_called_once_with(
+        "card_msg_content_type", "user_card_content"
+    )

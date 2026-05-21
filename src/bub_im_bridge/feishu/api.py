@@ -173,7 +173,9 @@ async def fetch_chat_history(
             if page_token:
                 builder.page_token(page_token)
 
-            resp = api.list(builder.build())
+            req = builder.build()
+            req.add_query("card_msg_content_type", "user_card_content")
+            resp = api.list(req)
 
             if not resp.success():
                 logger.warning(
