@@ -149,10 +149,6 @@ class FeishuChannel(Channel):
         self._ws_thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
 
-        # Track last inbound message_id per chat so ``send`` can reply.
-        # (The bub framework does not forward ``context`` to outbound messages.)
-        self._last_message_id: dict[str, str] = {}
-        
         # Track message start time for elapsed time calculation
         self._message_start_time: dict[str, float] = {}
 
@@ -428,9 +424,6 @@ class FeishuChannel(Channel):
         session_id = f"feishu:{message.chat_id}"
         sender_id = message.sender_open_id or ""
 
-        # Remember for reply
-        self._last_message_id[message.chat_id] = message.message_id
-
         # Send random reaction to acknowledge message received
         self._add_random_reaction(message.message_id)
 
@@ -537,7 +530,10 @@ class FeishuChannel(Channel):
                 chat_id=message.chat_id,
                 kind="command",
                 is_active=True,
-                context={"sender_id": sender_id},
+                context={
+                    "sender_id": sender_id,
+                    "reply_to_message_id": message.message_id,
+                },
             )
 
         # Fetch quoted message content if this is a reply
@@ -614,7 +610,10 @@ class FeishuChannel(Channel):
         local_time = format_feishu_timestamp(message.create_time)
 
         # Inject API client and profile store into context for tool access
-        context: dict[str, Any] = {"sender_id": sender_id}
+        context: dict[str, Any] = {
+            "sender_id": sender_id,
+            "reply_to_message_id": message.message_id,
+        }
         if local_time:
             context["date"] = local_time
         if self._api_client is not None:
@@ -746,7 +745,7 @@ class FeishuChannel(Channel):
         return data, mime_type
 
     def _send_queue_full_notification(self, message: FeishuInboundMessage) -> None:
-        """Reply directly to the dropped message without touching ``_last_message_id``."""
+        """Reply directly to the dropped message without going through outbound routing."""
         self._reply_message(
             message.message_id,
             "text",
@@ -792,7 +791,6 @@ class FeishuChannel(Channel):
 
         # Confirm to admin
         session_id = f"feishu:{message.chat_id}"
-        self._last_message_id[message.chat_id] = message.message_id
         await self.send(
             ChannelMessage(
                 session_id=session_id,
@@ -800,6 +798,7 @@ class FeishuChannel(Channel):
                 chat_id=message.chat_id,
                 content=f"已全局取消 {len(drained)} 条排队消息，影响 {len(affected_sessions)} 个会话。",
                 is_active=True,
+                context={"reply_to_message_id": message.message_id},
             )
         )
 
@@ -829,8 +828,9 @@ class FeishuChannel(Channel):
         if not text:
             return
 
-        # Calculate elapsed time and collect tool stats if we have start time
-        reply_to = self._last_message_id.get(chat_id)
+        # Reply targets must be carried on the outbound message itself.
+        # Chat-global caches misroute replies under concurrent turns and schedule triggers.
+        reply_to = _extract_reply_to_message_id(message)
         elapsed_seconds = None
         stats: ToolStats | None = None
         if reply_to and reply_to in self._message_start_time:
@@ -846,8 +846,8 @@ class FeishuChannel(Channel):
         if reply_to:
             self._reply_message(reply_to, msg_type, content_json)
         else:
-            logger.warning(
-                "feishu.send no message_id to reply, sending as new message chat_id={}",
+            logger.info(
+                "feishu.send outbound has no reply target, sending as new message chat_id={}",
                 chat_id,
             )
             self._create_message(chat_id, msg_type, content_json)
@@ -1106,6 +1106,14 @@ def _extract_outbound_text(message: ChannelMessage) -> str:
             if isinstance(text, str) and text.strip():
                 return text
     return content.strip() if isinstance(content, str) else ""
+
+
+def _extract_reply_to_message_id(message: ChannelMessage) -> str | None:
+    context = getattr(message, "context", None)
+    if not isinstance(context, dict):
+        return None
+    reply_to = context.get("reply_to_message_id")
+    return reply_to if isinstance(reply_to, str) and reply_to else None
 
 
 # Patterns that indicate rich content needing card rendering

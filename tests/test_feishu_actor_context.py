@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from bub.channels.message import ChannelMessage
 from bub_im_bridge.feishu.channel import (
     FeishuChannel,
     FeishuInboundMessage,
@@ -240,6 +241,67 @@ class TestStructuredPayloadInChannelMessage:
         payload = json.loads(channel_msg.content)
 
         assert payload["mentions"] == []
+
+    async def test_channel_message_context_includes_reply_target(self, tmp_path: Path):
+        channel = _make_channel(tmp_path)
+        raw = _make_raw_event()
+        msg = _parse_event(raw)
+        assert msg is not None
+
+        channel_msg = await channel._build_channel_message(
+            msg, msg.text.strip(), "ou_sender", "feishu:chat_001"
+        )
+
+        assert channel_msg.context["reply_to_message_id"] == "msg_001"
+
+
+@pytest.mark.asyncio
+class TestFeishuOutboundReplyRouting:
+    async def test_send_replies_to_explicit_message_id(self, tmp_path: Path):
+        channel = _make_channel(tmp_path)
+        channel._api_client = object()
+        channel._message_start_time["msg_001"] = 100.0
+        reply_calls: list[tuple[str, str, str]] = []
+        create_calls: list[tuple[str, str, str]] = []
+
+        channel._reply_message = lambda mid, msg_type, content: reply_calls.append((mid, msg_type, content))
+        channel._create_message = lambda cid, msg_type, content: create_calls.append((cid, msg_type, content))
+
+        with patch("bub_im_bridge.feishu.channel.time.time", return_value=103.0):
+            await channel.send(
+                ChannelMessage(
+                    session_id="feishu:chat_001",
+                    channel="feishu",
+                    chat_id="chat_001",
+                    content="hello",
+                    context={"reply_to_message_id": "msg_001"},
+                )
+            )
+
+        assert [call[0] for call in reply_calls] == ["msg_001"]
+        assert create_calls == []
+        assert "msg_001" not in channel._message_start_time
+
+    async def test_send_creates_new_message_without_reply_target(self, tmp_path: Path):
+        channel = _make_channel(tmp_path)
+        channel._api_client = object()
+        reply_calls: list[tuple[str, str, str]] = []
+        create_calls: list[tuple[str, str, str]] = []
+
+        channel._reply_message = lambda mid, msg_type, content: reply_calls.append((mid, msg_type, content))
+        channel._create_message = lambda cid, msg_type, content: create_calls.append((cid, msg_type, content))
+
+        await channel.send(
+            ChannelMessage(
+                session_id="feishu:chat_001",
+                channel="feishu",
+                chat_id="chat_001",
+                content="hello",
+            )
+        )
+
+        assert reply_calls == []
+        assert [call[0] for call in create_calls] == ["chat_001"]
 
 
 # ---------------------------------------------------------------------------
