@@ -16,9 +16,12 @@ def build_user_context_hint(profile: UserProfile | None) -> str:
         "- Feishu 消息上下文（sender、mentions）、Feishu API 信息用于当前会话感知\n"
         "- workspace 中的 USER.md 或其他上下文文件用于理解用户或项目背景\n\n"
         "规则：\n"
+        "- 普通聊天回复直接回答即可；不要为了回复当前这条 Feishu 消息去调用任何 skill 或 tool\n"
+        "- 当前消息的发送与回复链路已经由 Feishu plugin / channel 处理；不要为了'发出回复'再加载 Feishu、opencli 等发送类 skill\n"
         "- 当需要读取、创建、更新 profile 时，必须使用内置 user.* 工具\n"
         "- 当消息中提及其他用户（如 @某某）时，使用 user.lookup 查询\n"
         "- 当观察到用户的行为特征、兴趣爱好等信息时，使用 user.update 记录\n"
+        "- 只有在确实需要读取额外历史、查询外部信息、修改 profile、或生成特殊卡片时，才调用对应 skill / tool\n"
         "- profile 不存在或不完整时，不要卡住；继续结合 Feishu 信息、当前消息、"
         "USER.md 等其他来源完成任务\n"
         "- 不得用 bash、python 或直接文件编辑操作 profiles 目录\n"
@@ -67,6 +70,7 @@ Your response will be rendered in Feishu. Use standard Markdown with these rules
 
 For simple conversational replies, respond naturally without formatting — like a normal person chatting.
 Only use rich formatting (headings, tables, lists) when the content benefits from structure.
+For normal chat replies, answer directly in text. Do NOT call a skill or tool just to send or format an ordinary Feishu reply.
 
 When the user asks for data visualization (charts, trends, comparisons, rankings, proportions, \
 dashboards, reports), load the `feishu-card` skill and follow its instructions to generate a \
