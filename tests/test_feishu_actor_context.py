@@ -394,6 +394,18 @@ class TestPromptRulesForGroupChat:
         hint = build_user_context_hint(None)
         assert "回复规则" in hint or "默认回复" in hint
 
+    def test_prompt_includes_rule_direct_reply_without_skill_or_tool(self):
+        """Ordinary chat replies should not require loading skills or tools."""
+        hint = build_user_context_hint(None)
+        assert "普通聊天回复直接回答即可" in hint
+        assert "不要为了回复当前这条 Feishu 消息去调用任何 skill 或 tool" in hint
+
+    def test_prompt_includes_rule_not_to_use_feishu_or_opencli_for_sending_reply(self):
+        """Sending the current reply is handled by the channel, not by extra send skills."""
+        hint = build_user_context_hint(None)
+        assert "Feishu plugin / channel" in hint
+        assert "Feishu、opencli 等发送类 skill" in hint
+
 
 # ---------------------------------------------------------------------------
 # Integration: parse -> payload -> prompt chain
