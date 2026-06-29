@@ -35,6 +35,28 @@ BUB_TELEGRAM_PROXY=http://127.0.0.1:1087  # 国内网络需要
 
 微信渠道需要先扫码登录：`uv run -m bub_im_bridge login`
 
+### GitLab Webhook
+
+GitLab webhook 是主动事件源；当前只监听 MR reviewer/assignee 指派给指定人员的事件。内置 review prompt 通过 Bub `build_prompt` hook 注入，处理结果发送到配置的通知渠道。
+
+```env
+BUB_GITLAB_WEBHOOK_HOST=0.0.0.0
+BUB_GITLAB_WEBHOOK_PORT=8765
+BUB_GITLAB_WEBHOOK_PATH=/gitlab/webhook
+BUB_GITLAB_WEBHOOK_TOKEN=your-gitlab-secret-token
+BUB_GITLAB_PROJECT_IDS=123,456
+BUB_GITLAB_REVIEWER_NAME=Meta42
+BUB_GITLAB_NOTIFY_CHANNEL=feishu
+BUB_GITLAB_NOTIFY_CHAT_ID=oc_xxx
+BUB_GITLAB_WEBHOOK_DEDUPE_TTL=600
+```
+
+在 GitLab 项目设置里把 webhook URL 指向：`http://<host>:8765/gitlab/webhook`，并配置相同的 Secret Token，Trigger 勾选 `Merge request events`。
+
+> `BUB_GITLAB_WEBHOOK_HOST` 默认 `127.0.0.1`（仅本机访问）。如果 GitLab 服务器需要远程访问，设为 `0.0.0.0` 并确保网络安全策略允许。
+>
+> GitLab webhook channel 默认开启，配合 `BUB_ENABLED_CHANNELS=all`（Bub 默认）自动启动。设 `BUB_GITLAB_WEBHOOK_DISABLED=true` 可单独关闭。
+
 ## 配置参考
 
 ### 通用配置
@@ -85,6 +107,21 @@ BUB_TELEGRAM_PROXY=http://127.0.0.1:1087  # 国内网络需要
 |--------|------|:----:|
 | `WEIXIN_BASE_URL` | 微信 API 基础地址 | ❌ |
 | `WEIXIN_ACCOUNT_ID` | 微信账号 ID | ❌ |
+
+### GitLab Webhook
+
+| 配置项 | 说明 | 必需 |
+|--------|------|:----:|
+| `BUB_GITLAB_WEBHOOK_DISABLED` | 设为 `true` 可关闭 GitLab webhook channel，默认开启 | ❌ |
+| `BUB_GITLAB_WEBHOOK_HOST` | HTTP listener 绑定地址，默认 `127.0.0.1` | ❌ |
+| `BUB_GITLAB_WEBHOOK_PORT` | HTTP listener 端口，默认 `8765` | ❌ |
+| `BUB_GITLAB_WEBHOOK_PATH` | Webhook 路径，默认 `/gitlab/webhook` | ❌ |
+| `BUB_GITLAB_WEBHOOK_TOKEN` | GitLab Secret Token，用于校验 `X-Gitlab-Token` | ❌ |
+| `BUB_GITLAB_PROJECT_IDS` | 允许处理的 GitLab project id，逗号分隔；空值表示不限制 | ❌ |
+| `BUB_GITLAB_REVIEWER_NAME` | 触发 review 自动处理的 reviewer/assignee 姓名或 username | ✅ |
+| `BUB_GITLAB_NOTIFY_CHANNEL` | 通知渠道，默认 `feishu` | ❌ |
+| `BUB_GITLAB_NOTIFY_CHAT_ID` | 通知目标 chat id | ✅ |
+| `BUB_GITLAB_WEBHOOK_DEDUPE_TTL` | 事件去重 TTL 秒数，默认 `600` | ❌ |
 
 ## 消息类型
 
