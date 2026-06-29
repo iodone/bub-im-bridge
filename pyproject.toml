@@ -13,6 +13,7 @@ dependencies = [
 [project.entry-points."bub"]
 weixin_channel = "bub_im_bridge.weixin.plugin:WeixinPlugin"
 feishu_channel = "bub_im_bridge.feishu.plugin:FeishPlugin"
+gitlab_webhook = "bub_im_bridge.gitlab.plugin:GitLabWebhookPlugin"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
