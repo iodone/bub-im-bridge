@@ -1131,6 +1131,35 @@ def _needs_card(text: str) -> bool:
 _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 
 
+def _normalize_card_elements(card_json: str) -> str:
+    """Fix missing ``tag`` fields in card body elements.
+
+    Feishu schema 2.0 requires every element in ``body.elements`` to have a
+    ``tag`` (``markdown``, ``div``, ``hr``, ``column_set``, ...). LLMs
+    sometimes emit ``{"content": "..."}`` without a tag, which causes
+    ``code=230099`` ("no tag specified"). This auto-fills ``tag: "markdown"``
+    for any element that has ``content`` but no ``tag``.
+    """
+    try:
+        card = json.loads(card_json)
+        if not isinstance(card, dict):
+            return card_json
+        body = card.get("body")
+        if not isinstance(body, dict):
+            return card_json
+        elements = body.get("elements")
+        if not isinstance(elements, list):
+            return card_json
+        changed = False
+        for el in elements:
+            if isinstance(el, dict) and "tag" not in el and "content" in el:
+                el["tag"] = "markdown"
+                changed = True
+        return json.dumps(card, ensure_ascii=False) if changed else card_json
+    except Exception:
+        return card_json
+
+
 def _extract_card_json(text: str) -> str | None:
     """Try to extract a schema 2.0 card JSON from *text*.
 
@@ -1145,7 +1174,7 @@ def _extract_card_json(text: str) -> str | None:
         with contextlib.suppress(json.JSONDecodeError):
             obj = json.loads(stripped)
             if isinstance(obj, dict) and obj.get("schema") == "2.0" and "body" in obj:
-                return stripped
+                return _normalize_card_elements(stripped)
 
     # Case 2: JSON wrapped in code fences
     m = _CODE_FENCE_RE.search(text)
@@ -1154,7 +1183,7 @@ def _extract_card_json(text: str) -> str | None:
         with contextlib.suppress(json.JSONDecodeError):
             obj = json.loads(candidate)
             if isinstance(obj, dict) and obj.get("schema") == "2.0" and "body" in obj:
-                return candidate
+                return _normalize_card_elements(candidate)
 
     # Case 3: JSON embedded in surrounding text
     start = text.find("{")
@@ -1164,7 +1193,7 @@ def _extract_card_json(text: str) -> str | None:
         with contextlib.suppress(json.JSONDecodeError):
             obj = json.loads(candidate)
             if isinstance(obj, dict) and obj.get("schema") == "2.0" and "body" in obj:
-                return candidate
+                return _normalize_card_elements(candidate)
 
     return None
 
