@@ -10,7 +10,7 @@ from loguru import logger
 from bub.channels.base import Channel
 from bub.channels.message import ChannelMessage
 from bub.framework import BubFramework
-from bub.hookspecs import hookimpl
+from bub.hooks import hookimpl
 
 from bub_im_bridge.weixin.agent_adapter import BubWeixinAgent
 
