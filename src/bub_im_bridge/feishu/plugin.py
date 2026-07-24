@@ -8,7 +8,7 @@ from typing import Any
 from bub.channels.message import ChannelMessage
 from bub.envelope import field_of
 from bub.framework import BubFramework
-from bub.hookspecs import hookimpl
+from bub.hooks import hookimpl
 from bub.types import MessageHandler
 
 from bub_im_bridge.feishu.channel import FeishuChannel

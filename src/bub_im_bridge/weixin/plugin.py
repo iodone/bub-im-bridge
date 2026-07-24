@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from bub.framework import BubFramework
-from bub.hookspecs import hookimpl
+from bub.hooks import hookimpl
 from bub.types import MessageHandler
 
 from bub_im_bridge.weixin.channel import WeixinChannel
