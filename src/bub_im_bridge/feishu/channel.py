@@ -689,7 +689,7 @@ class FeishuChannel(Channel):
             media=media_items,
         )
 
-    # Extension → MIME type mapping for Feishu image responses
+    # Extension → MIME type mapping for Feishu image responses (fallback only)
     _IMAGE_MIME_MAP: dict[str, str] = {
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
@@ -698,6 +698,32 @@ class FeishuChannel(Channel):
         ".webp": "image/webp",
         ".bmp": "image/bmp",
     }
+
+    @staticmethod
+    def _detect_image_mime_from_bytes(data: bytes) -> str | None:
+        """Detect image MIME type from magic-number signatures at the start
+        of the byte stream.
+
+        Returns the detected MIME type, or ``None`` when no signature matches.
+
+        Reference signatures:
+          * PNG:  ``89 50 4E 47 0D 0A 1A 0A``
+          * JPEG: ``FF D8 FF``
+          * GIF:  ``GIF87a`` / ``GIF89a``
+          * WebP: ``RIFF????WEBP``
+          * BMP:  ``BM``
+        """
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if data.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
+            return "image/gif"
+        if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            return "image/webp"
+        if data.startswith(b"BM"):
+            return "image/bmp"
+        return None
 
     async def _download_image(
         self, client: lark.Client, message_id: str, image_key: str
@@ -708,9 +734,12 @@ class FeishuChannel(Channel):
         which is the correct endpoint for user-sent images (not the bot-upload
         ``/images/:image_key`` endpoint).
 
-        Returns (image_bytes, mime_type).  The mime type is derived from
-        the ``file_name`` in the API response when possible; falls back
-        to ``image/jpeg`` only when the extension is unrecognised.
+        Returns ``(image_bytes, mime_type)``. The MIME type is detected from
+        the actual image bytes (magic numbers) — Feishu's ``file_name`` is
+        unreliable (often missing or with wrong extension), and downstream
+        LLM APIs (e.g. Anthropic) strictly validate ``media_type`` against
+        the byte content. We fall back to extension-based detection, then to
+        ``image/jpeg``, only when the magic number is unrecognised.
         """
         request = (
             GetMessageResourceRequest.builder()
@@ -735,12 +764,16 @@ class FeishuChannel(Channel):
             )
         data = file_obj.read()
 
-        # Detect mime type from response file_name
-        mime_type = "image/jpeg"  # conservative default
-        file_name: str | None = getattr(response, "file_name", None)
-        if file_name:
-            ext = Path(file_name).suffix.lower()
-            mime_type = self._IMAGE_MIME_MAP.get(ext, mime_type)
+        # Detect MIME from actual bytes first (most reliable).
+        mime_type = self._detect_image_mime_from_bytes(data)
+        if mime_type is None:
+            # Fallback: derive from file_name extension when magic number
+            # is unknown (rare — covers exotic formats not enumerated above).
+            mime_type = "image/jpeg"  # conservative default
+            file_name: str | None = getattr(response, "file_name", None)
+            if file_name:
+                ext = Path(file_name).suffix.lower()
+                mime_type = self._IMAGE_MIME_MAP.get(ext, mime_type)
 
         return data, mime_type
 
