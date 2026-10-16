@@ -687,3 +687,145 @@ class TestMediaItemGetUrl:
 
         with pytest.raises(RuntimeError, match="image not found"):
             await item.get_url()
+
+    async def test_png_bytes_with_misleading_filename_detected_as_png(
+        self, tmp_path: Path
+    ):
+        """Regression: when Feishu returns ``file_name`` without an extension
+        (e.g. ``"image"``) or with a wrong extension, MIME detection must
+        fall back to magic-number inspection of the actual bytes — not blindly
+        trust the filename and return ``image/jpeg``.
+
+        Reproduces the failure where a PNG screenshot embedded in a Feishu
+        post message was sent to Anthropic as ``image/jpeg`` and rejected:
+        ``messages.N.content.K.image.source.base64: The image was specified
+        using the image/jpeg media type, but the image appears to be a
+        image/png image``.
+        """
+        channel = _make_channel(tmp_path)
+
+        mock_client = MagicMock()
+        channel._api_client = mock_client
+
+        # Real PNG magic header — what Anthropic will see and validate against.
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
+        mock_response = MagicMock()
+        mock_response.success.return_value = True
+        mock_response.file = io.BytesIO(png_bytes)
+        # Feishu sometimes returns a generic / extensionless file_name for
+        # images embedded in post messages (group announcements, quoted
+        # messages). The previous extension-only path would default to
+        # image/jpeg here.
+        mock_response.file_name = "image"
+
+        mock_client.im.v1.message_resource.aget = AsyncMock(return_value=mock_response)
+
+        raw = _make_raw_image_event(image_key="img_v3_misleading_name")
+        msg = _parse_event(raw)
+        assert msg is not None
+
+        channel_msg = await channel._build_channel_message(
+            msg, msg.text, "ou_sender", "feishu:chat_001"
+        )
+
+        item = channel_msg.media[0]
+        url = await item.get_url()
+
+        assert url.startswith("data:image/png;base64,")
+        assert item.mime_type == "image/png"
+
+    async def test_jpeg_bytes_with_png_filename_detected_as_jpeg(
+        self, tmp_path: Path
+    ):
+        """Even if file_name says ``.png``, magic-number inspection wins —
+        the bytes are authoritative because that's what the LLM API validates.
+        """
+        channel = _make_channel(tmp_path)
+
+        mock_client = MagicMock()
+        channel._api_client = mock_client
+
+        # Real JPEG magic, but file_name lies and claims PNG.
+        jpeg_bytes = b"\xff\xd8\xff\xe0" + b"\x00" * 100
+        mock_response = MagicMock()
+        mock_response.success.return_value = True
+        mock_response.file = io.BytesIO(jpeg_bytes)
+        mock_response.file_name = "actually_jpeg.png"
+
+        mock_client.im.v1.message_resource.aget = AsyncMock(return_value=mock_response)
+
+        raw = _make_raw_image_event(image_key="img_v3_lying_name")
+        msg = _parse_event(raw)
+        assert msg is not None
+
+        channel_msg = await channel._build_channel_message(
+            msg, msg.text, "ou_sender", "feishu:chat_001"
+        )
+
+        item = channel_msg.media[0]
+        url = await item.get_url()
+
+        assert url.startswith("data:image/jpeg;base64,")
+        assert item.mime_type == "image/jpeg"
+
+
+# ---------------------------------------------------------------------------
+# MIME magic-number detection helper
+# ---------------------------------------------------------------------------
+
+
+class TestDetectImageMimeFromBytes:
+    """Unit tests for FeishuChannel._detect_image_mime_from_bytes."""
+
+    def test_png_signature(self):
+        assert (
+            FeishuChannel._detect_image_mime_from_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 8)
+            == "image/png"
+        )
+
+    def test_jpeg_signature(self):
+        assert (
+            FeishuChannel._detect_image_mime_from_bytes(b"\xff\xd8\xff\xe0" + b"x" * 8)
+            == "image/jpeg"
+        )
+
+    def test_gif87_signature(self):
+        assert (
+            FeishuChannel._detect_image_mime_from_bytes(b"GIF87a" + b"x" * 8)
+            == "image/gif"
+        )
+
+    def test_gif89_signature(self):
+        assert (
+            FeishuChannel._detect_image_mime_from_bytes(b"GIF89a" + b"x" * 8)
+            == "image/gif"
+        )
+
+    def test_webp_signature(self):
+        assert (
+            FeishuChannel._detect_image_mime_from_bytes(
+                b"RIFF\x00\x00\x00\x00WEBP" + b"x" * 4
+            )
+            == "image/webp"
+        )
+
+    def test_bmp_signature(self):
+        assert (
+            FeishuChannel._detect_image_mime_from_bytes(b"BM" + b"\x00" * 30)
+            == "image/bmp"
+        )
+
+    def test_unknown_signature_returns_none(self):
+        assert FeishuChannel._detect_image_mime_from_bytes(b"\x00" * 16) is None
+
+    def test_empty_bytes_returns_none(self):
+        assert FeishuChannel._detect_image_mime_from_bytes(b"") is None
+
+    def test_riff_without_webp_marker_returns_none(self):
+        # RIFF is also used by WAV, AVI, etc — only RIFF+WEBP is image/webp.
+        assert (
+            FeishuChannel._detect_image_mime_from_bytes(
+                b"RIFF\x00\x00\x00\x00WAVE" + b"x" * 4
+            )
+            is None
+        )
