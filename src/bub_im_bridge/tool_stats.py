@@ -1,10 +1,10 @@
-"""Tool execution stats collected per-message via bub.tools loguru events.
+"""Tool execution stats collected per-message via bub.core.tools loguru events.
 
 Used by the Feishu channel to render a footer line like::
 
     ⏱️ 38.77秒 · 🔧 6 步 · bash×6 · ⚠️ 失败×1
 
-The collector listens to Bub's built-in ``bub.tools`` logger (tool.call.start /
+The collector listens to Bub's built-in ``bub.core.tools`` logger (tool.call.start /
 tool.call.error events) and forwards counts into the currently active
 ``ToolStats`` instance.  The channel is responsible for registering / popping
 the stats instance around each inbound message lifecycle.
@@ -119,7 +119,7 @@ def _get_active() -> ToolStats | None:
         return next(reversed(_active_stats.values()))
 
 
-# Pre-compiled patterns for bub.tools log messages.
+# Pre-compiled patterns for bub.core.tools log messages.
 _START_RE = re.compile(r"tool\.call\.start name=(\w+)")
 _ERROR_RE = re.compile(r"tool\.call\.error name=(\w+)")
 
@@ -133,7 +133,7 @@ def install_sink() -> None:
 
     def _sink(message):  # noqa: ANN001 — loguru handler signature
         record = message.record
-        if record["name"] != "bub.tools":
+        if record["name"] != "bub.core.tools":
             return
         level = record["level"].name
         if level not in ("INFO", "ERROR"):
@@ -160,5 +160,5 @@ def install_sink() -> None:
     logger.add(
         _sink,
         level="INFO",
-        filter=lambda r: r["name"] == "bub.tools",
+        filter=lambda r: r["name"] == "bub.core.tools",
     )

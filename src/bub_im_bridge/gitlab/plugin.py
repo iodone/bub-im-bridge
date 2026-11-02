@@ -8,7 +8,8 @@ from typing import Any
 from bub.envelope import content_of, field_of
 from bub.framework import BubFramework
 from bub.hooks import hookimpl
-from bub.types import MessageHandler, State
+from bub.channels.contracts import MessageHandler
+from bub.turn import TurnState
 
 from bub_im_bridge.gitlab.channel import (
     GitLabWebhookChannel,
@@ -41,7 +42,9 @@ class GitLabWebhookPlugin:
         return [GitLabWebhookChannel(framework=self.framework)]
 
     @hookimpl(tryfirst=True)
-    def build_prompt(self, message: Any, session_id: str, state: State) -> str | None:
+    def build_prompt(
+        self, message: Any, session_id: str, state: TurnState
+    ) -> str | None:
         if field_of(message, "channel") != "gitlab":
             return None
         content = content_of(message)
