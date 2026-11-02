@@ -10,7 +10,7 @@ from pathlib import Path
 import lark_oapi as lark
 from pydantic import BaseModel, Field
 
-from bub.tools import ToolContext, tool
+from bub.core.tools import ToolContext, tool
 
 from bub_im_bridge.feishu.api import fetch_chat_history
 from bub_im_bridge.profiles import ProfileStore

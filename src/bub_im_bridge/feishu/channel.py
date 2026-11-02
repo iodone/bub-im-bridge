@@ -27,9 +27,9 @@ from lark_oapi.api.im.v1 import (
 from loguru import logger
 
 from bub.channels.base import Channel
+from bub.channels.contracts import MessageHandler
 from bub.channels.message import ChannelMessage, MediaItem
 from bub.framework import BubFramework
-from bub.types import MessageHandler
 
 from bub_im_bridge.feishu.api import (
     fetch_message_content,

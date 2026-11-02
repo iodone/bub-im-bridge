@@ -6,7 +6,7 @@ from typing import Any
 
 from bub.framework import BubFramework
 from bub.hooks import hookimpl
-from bub.types import MessageHandler
+from bub.channels.contracts import MessageHandler
 
 from bub_im_bridge.weixin.channel import WeixinChannel
 

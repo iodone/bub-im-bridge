@@ -9,10 +9,10 @@ from bub.channels.message import ChannelMessage
 from bub.envelope import field_of
 from bub.framework import BubFramework
 from bub.hooks import hookimpl
-from bub.types import MessageHandler
+from bub.channels.contracts import MessageHandler
+from bub.core.tools import Tool
 
 from bub_im_bridge.feishu.channel import FeishuChannel
-from bub_im_bridge.feishu import tools  # noqa: F401 - import to register tools
 
 _CURRENT_FEISHU_REPLY_TO: ContextVar[str | None] = ContextVar(
     "bub_im_bridge_current_feishu_reply_to",
@@ -30,6 +30,18 @@ class FeishPlugin:
     def provide_channels(self, message_handler: MessageHandler) -> list[Any]:
         """Provide Feishu channel to Bub."""
         return [FeishuChannel(on_receive=message_handler, framework=self.framework)]
+
+    @hookimpl
+    def provide_tools(self) -> list[Tool]:
+        from bub_im_bridge.feishu import tools
+
+        return [
+            tools.feishu_history,
+            tools.user_lookup,
+            tools.user_search,
+            tools.user_update,
+            tools.user_create,
+        ]
 
     @hookimpl
     async def load_state(self, message: Any, session_id: str) -> dict[str, str | None]:
